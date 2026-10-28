@@ -1,0 +1,10 @@
+[project]
+name = "comfyui-kano-h3-shot"
+description = "Three-node wrapper that collapses the MiniMax H3 Continuum long-form video graph (model stack, shot generation, reference bundle) into readable nodes."
+version = "0.1.0"
+dependencies = []
+
+[tool.comfy]
+PublisherId = "dorgonman"
+DisplayName = "ComfyUI Kano H3 Shot"
+License = "MIT"
