@@ -7,7 +7,15 @@ dropdown.
 
 from __future__ import annotations
 
-from .common import DEFAULT_PRESET, MODEL_PRESETS, link, next_uid, node
+from .common import (
+    DEFAULT_PRESET,
+    MODEL_PRESETS,
+    expansion,
+    link,
+    next_uid,
+    node,
+    sage_attention_available,
+)
 
 SAMPLERS = ["res_multistep", "euler", "dpmpp_2m", "dpmpp_3m_sde"]
 SCHEDULERS = ["simple", "sgm_uniform", "karras", "normal"]
@@ -28,9 +36,10 @@ class KanoH3Stack:
                 "sage_attention": (
                     "BOOLEAN",
                     {
-                        "default": True,
+                        "default": False,
                         "tooltip": "Apply the memory-efficient SageAttention patch. "
-                        "Needs the sageattention package; turn off if it is missing.",
+                        "Needs a sageattention release that exposes per_thread_int8_triton "
+                        "and get_cuda_arch_versions (2.x+); older releases fail at runtime.",
                     },
                 ),
             }
@@ -89,6 +98,12 @@ class KanoH3Stack:
 
         model_src = link(unet, 0)
         if sage_attention:
+            if not sage_attention_available():
+                raise RuntimeError(
+                    "SageAttention was requested but the installed sageattention package does "
+                    "not expose per_thread_int8_triton / get_cuda_arch_versions. "
+                    "Upgrade sageattention (2.x+) or turn sage_attention off."
+                )
             patch = next_uid("sage")
             graph[patch] = node("MiniMaxH3MemoryEfficientSageAttentionPatch",
                 inputs={"model": model_src},
@@ -101,18 +116,18 @@ class KanoH3Stack:
         )
         graph[sched] = sched_node
 
-        return ({
-            "expand": graph,
-            "visible_to_parent": False,
-            "outputs": {
-                "model": model_src,
-                "clip": link(clip, 0),
-                "video_vae": link(vvae, 0),
-                "audio_vae": link(avae, 0),
-                "sampler": link(sel, 0),
-                "sigmas": link(sched, 0),
-            },
-        },)
+        return expansion(
+            graph,
+            (
+                model_src,
+                link(clip, 0),
+                link(vvae, 0),
+                link(avae, 0),
+                link(sel, 0),
+                link(sched, 0),
+            ),
+            names=("model", "clip", "video_vae", "audio_vae", "sampler", "sigmas"),
+        )
 
 
 NODE_CLASS_MAPPINGS = {"KanoH3Stack": KanoH3Stack}

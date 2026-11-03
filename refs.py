@@ -8,7 +8,7 @@ so ``@R1`` stays valid in every chunk prompt).
 
 from __future__ import annotations
 
-from .common import link, next_uid, node
+from .common import expansion, link, next_uid, node
 
 REF_SLOTS = 9
 
@@ -63,11 +63,7 @@ class KanoH3RefCast:
             )
         }
 
-        return ({
-            "expand": graph,
-            "visible_to_parent": False,
-            "outputs": {"reference_images": link(refs, 0)},
-        },)
+        return expansion(graph, (link(refs, 0),), names=("reference_images",))
 
 
 NODE_CLASS_MAPPINGS = {"KanoH3RefCast": KanoH3RefCast}

@@ -82,6 +82,49 @@ def link(uid: str, slot: int = 0) -> list:
     return [uid, slot]
 
 
+def expansion(graph: dict, outputs, names=None) -> tuple:
+    """Build the return value ComfyUI Core expects from an expanding node.
+
+    Core 0.43 reads the parent's output values from the ``result`` key of the
+    returned dict (``execution.get_output_from_returns``) and then indexes that
+    value **positionally** (``node_outputs[i]``), so it must be a sequence in
+    ``RETURN_TYPES`` order — a mapping keyed by output name raises a KeyError
+    at runtime. The previous payload had no ``result`` key at all, which made
+    Core iterate ``None``.
+
+    ``visible_to_parent`` is not read by Core 0.43 and is kept only so that a
+    caller inspecting the payload can tell the subgraph is internal. The
+    ``outputs`` mapping is a readable alias and is ignored by Core.
+    """
+    ordered = tuple(outputs)
+    payload = {
+        "expand": graph,
+        "result": ordered,
+        "visible_to_parent": False,
+    }
+    if names:
+        payload["outputs"] = dict(zip(names, ordered))
+    return (payload,)
+
+
+def sage_attention_available() -> bool:
+    """True when the installed sageattention exposes the API KJNodes needs.
+
+    KJNodes' MiniMax H3 sage patch imports ``per_thread_int8_triton`` and
+    ``get_cuda_arch_versions`` from ``sageattention.core``. Older releases
+    (1.0.6 on this machine) do not have them, and the patch node then raises at
+    execution time.
+    """
+    try:
+        from sageattention.core import (  # type: ignore
+            get_cuda_arch_versions,
+            per_thread_int8_triton,
+        )
+    except Exception:
+        return False
+    return callable(get_cuda_arch_versions) and callable(per_thread_int8_triton)
+
+
 def model_exists(name: str, folder_key: str) -> bool:
     """True when the named file is present in the given model folder."""
     try:

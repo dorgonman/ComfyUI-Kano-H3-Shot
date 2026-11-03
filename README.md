@@ -55,3 +55,36 @@ Raw AV chunks land in `output/h3_continuum/runs/<run_name>/`.
 - `ComfyUI-H3-Continuum` (the nodes this package wraps)
 - `ComfyUI-KJNodes` (only for the optional SageAttention switch)
 - `rgthree-comfy` is **not** required
+
+## ComfyUI compatibility
+
+These nodes expand into a subgraph at execution time. ComfyUI Core 0.43 reads
+the expanded node's outputs from the `result` key of the returned payload and
+indexes that value **positionally**, in `RETURN_TYPES` order
+(`execution.get_output_from_returns` -> `node_outputs[i]`). The shared
+`common.expansion()` helper builds that payload, and `tests/test_expansion_contract.py`
+pins the contract — including a check that feeds the payload to Core's own
+return-value reader.
+
+`CreateVideo.bit_depth` is passed as the integer `8`, because Core exposes it
+as an int combo (`auto`, `8`, `10`), not as a string.
+
+## SageAttention
+
+`KanoH3Stack.sage_attention` is **off by default**. The KJNodes MiniMax H3 sage
+patch imports `per_thread_int8_triton` and `get_cuda_arch_versions` from
+`sageattention.core`; releases before 2.x do not provide them, and the patch
+then raises at execution time. Turning the switch on with an unsupported
+package now fails immediately with an actionable message instead of a late
+runtime error.
+
+## Tests
+
+From this directory:
+
+```
+D:\Web\ComfyUI\.venv\Scripts\python.exe -m unittest discover -s tests -t .
+```
+
+Set `PYTHONPATH` to the ComfyUI root to also run the check that hands the
+expansion payload to Core's execution engine; without it that one test skips.

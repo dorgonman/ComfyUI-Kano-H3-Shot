@@ -12,6 +12,7 @@ from .common import (
     ASPECTS,
     CONTINUITY,
     QUALITY_PRESETS,
+    expansion,
     link,
     next_uid,
     node,
@@ -196,7 +197,7 @@ class KanoH3Shot:
                     "images": link(seam_uid, 0),
                     "fps": 24.0,
                     "audio": link(seam_uid, 1),
-                    "bit_depth": "8",
+                    "bit_depth": 8,
                     "color_space": "sRGB",
                     "codec": "none",
                 },
@@ -213,16 +214,16 @@ class KanoH3Shot:
             ),
         }
 
-        return ({
-            "expand": graph,
-            "visible_to_parent": False,
-            "outputs": {
-                "images": link(seam_uid, 0),
-                "audio": link(seam_uid, 1),
-                "status": link(sampler_uid, 3),
-                "report": link(seam_uid, 2),
-            },
-        },)
+        return expansion(
+            graph,
+            (
+                link(seam_uid, 0),
+                link(seam_uid, 1),
+                link(sampler_uid, 3),
+                link(seam_uid, 2),
+            ),
+            names=("images", "audio", "status", "report"),
+        )
 
 
 NODE_CLASS_MAPPINGS = {"KanoH3Shot": KanoH3Shot}
