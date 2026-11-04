@@ -94,7 +94,7 @@ def shot_payload(**overrides):
         mode="Full Run",
     )
     kwargs.update(overrides)
-    return KanoH3Shot().expand(**kwargs)[0]
+    return KanoH3Shot().expand(**kwargs)
 
 
 class ExpansionContractTests(unittest.TestCase):
@@ -106,7 +106,7 @@ class ExpansionContractTests(unittest.TestCase):
             steps=30,
             denoise=1.0,
             sage_attention=False,
-        )[0]
+        )
         assert_core_contract(self, payload, expected_outputs=6)
         classes = {info["class_type"] for info in payload["expand"].values()}
         self.assertIn("UNETLoader", classes)
@@ -128,7 +128,7 @@ class ExpansionContractTests(unittest.TestCase):
             )
 
     def test_refcast_expansion_contract(self):
-        payload = KanoH3RefCast().expand(reference_use="All chunks")[0]
+        payload = KanoH3RefCast().expand(reference_use="All chunks")
         assert_core_contract(self, payload, expected_outputs=1)
         info = next(iter(payload["expand"].values()))
         self.assertEqual(info["class_type"], "H3ContinuumReferenceImagesV39")
@@ -160,17 +160,61 @@ class ExpansionContractTests(unittest.TestCase):
     def test_expansion_helper_keeps_readable_alias(self):
         payload = expansion(
             {"a": {"class_type": "X", "inputs": {}}}, (["a", 0],), names=("out",)
-        )[0]
+        )
         self.assertEqual(payload["result"], (["a", 0],))
         self.assertEqual(payload["outputs"], {"out": ["a", 0]})
         self.assertFalse(payload["visible_to_parent"])
+
+    def test_shot_is_an_output_node(self):
+        """The shot node must be an output node or the branch is pruned.
+
+        ComfyUI seeds the execution list with the output node ids and then
+        walks backwards through their inputs. A subgraph only materialises when
+        its parent node executes, so a non-output shot node with no consumer
+        downstream is never scheduled: the prompt reports success in 0.06
+        seconds and renders nothing.
+        """
+        self.assertTrue(KanoH3Shot.OUTPUT_NODE)
+
+    def test_shot_expansion_contains_a_save_node(self):
+        """The expanded subgraph has to contain the node that writes the file."""
+        payload = shot_payload()
+        classes = {info["class_type"] for info in payload["expand"].values()}
+        self.assertIn("SaveVideo", classes)
+
+    def test_node_function_returns_the_payload_dict(self):
+        """The node function must return the payload dict itself.
+
+        Core collects the function's return value into a list and then checks
+        ``isinstance(r, dict)`` on the element. A one element tuple made that
+        check fail: the subgraph was never recognised, the node reported one
+        list output instead of its declared outputs, and the downstream link
+        raised "list index out of range" in the executor.
+        """
+        for payload in (
+            shot_payload(),
+            KanoH3Stack().expand(
+                preset="H3 int8 (24GB / RTX 3090)",
+                sampler="res_multistep",
+                scheduler="simple",
+                steps=30,
+                denoise=1.0,
+                sage_attention=False,
+            ),
+            KanoH3RefCast().expand(reference_use="All chunks"),
+        ):
+            self.assertIsInstance(payload, dict)
+            self.assertIn("expand", payload)
+            self.assertIn("result", payload)
 
     def test_core_execution_engine_accepts_the_payload(self):
         """Feed the payload to Core's own return-value reader.
 
         ``execution.get_output_from_returns`` is the function that decides
         whether an expanding node hands its outputs back to the parent, so a
-        mismatch there is a runtime failure, not a cosmetic issue.
+        mismatch there is a runtime failure, not a cosmetic issue. Core calls it
+        with the list of node function return values, so the payload is passed
+        as a single element of that list.
         """
         try:
             import comfy.utils  # noqa: F401
@@ -178,7 +222,7 @@ class ExpansionContractTests(unittest.TestCase):
         except Exception:
             self.skipTest("ComfyUI core is not importable from this environment")
         payload = shot_payload()
-        output, ui, has_subgraph = get_output_from_returns((payload,), KanoH3Shot)
+        output, ui, has_subgraph = get_output_from_returns([payload], KanoH3Shot)
         self.assertTrue(has_subgraph)
         self.assertEqual(len(output), 1)
         new_graph, node_outputs = output[0]
@@ -187,6 +231,25 @@ class ExpansionContractTests(unittest.TestCase):
         self.assertEqual(len(node_outputs), len(KanoH3Shot.RETURN_TYPES))
         for value in node_outputs:
             self.assertTrue(is_link(value), f"not a link: {value!r}")
+
+    def test_core_reads_the_declared_output_count(self):
+        """The subgraph must resolve to exactly RETURN_TYPES outputs.
+
+        ComfyUI merges the resolved subgraph values into the parent's output
+        list and then indexes that list per outgoing link. If the merge
+        produced fewer entries than the links expect, the executor raises
+        "list index out of range".
+        """
+        try:
+            import comfy.utils  # noqa: F401
+            from execution import get_output_from_returns, merge_result_data
+        except Exception:
+            self.skipTest("ComfyUI core is not importable from this environment")
+        payload = shot_payload()
+        output, _, _ = get_output_from_returns([payload], KanoH3Shot)
+        _, node_outputs = output[0]
+        merged = merge_result_data([tuple(node_outputs)], KanoH3Shot)
+        self.assertEqual(len(merged), len(KanoH3Shot.RETURN_TYPES))
 
 
 if __name__ == "__main__":

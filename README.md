@@ -17,7 +17,8 @@ KanoH3Shot ── images / audio / status / report
 ```
 
 `KanoH3Shot` writes the finished MP4 to `output/video/<run_name>_*.mp4` itself, so
-no output nodes are needed downstream.
+no output nodes are needed downstream. It is still an output node internally
+(see ComfyUI compatibility below), which is what makes Core schedule it.
 
 ## Model presets
 
@@ -58,13 +59,28 @@ Raw AV chunks land in `output/h3_continuum/runs/<run_name>/`.
 
 ## ComfyUI compatibility
 
-These nodes expand into a subgraph at execution time. ComfyUI Core 0.43 reads
-the expanded node's outputs from the `result` key of the returned payload and
-indexes that value **positionally**, in `RETURN_TYPES` order
-(`execution.get_output_from_returns` -> `node_outputs[i]`). The shared
-`common.expansion()` helper builds that payload, and `tests/test_expansion_contract.py`
-pins the contract — including a check that feeds the payload to Core's own
-return-value reader.
+These nodes expand into a subgraph at execution time. Three Core 0.43 rules have
+to hold at the same time, and all three are pinned by
+`tests/test_expansion_contract.py`:
+
+1. **The node function returns the payload dict itself**, not a one element
+   tuple. Core collects the function's return value into a list
+   (`_async_map_node_over_list`) and then checks `isinstance(r, dict)` on the
+   element. A tuple slipped past that check, the subgraph was never recognised,
+   and the node reported a single list output instead of its declared outputs —
+   which surfaced as `IndexError: list index out of range` in the executor when
+   a downstream link read socket 5 of a 1-entry output list.
+
+2. **The payload carries a `result` key** holding the parent's output values as
+   a tuple in `RETURN_TYPES` order, because Core reads them from that key and
+   indexes them **positionally** (`execution.get_output_from_returns` ->
+   `node_outputs[i]`).
+
+3. **`KanoH3Shot` is an output node.** Core seeds the execution list with the
+   output node ids and walks backwards through their inputs, and a subgraph
+   only materialises when its parent actually executes. A shot node that is
+   not an output node and has no consumer downstream is therefore never
+   scheduled: the prompt reports success in 0.06 seconds and renders nothing.
 
 `CreateVideo.bit_depth` is passed as the integer `8`, because Core exposes it
 as an int combo (`auto`, `8`, `10`), not as a string.

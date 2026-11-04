@@ -82,15 +82,21 @@ def link(uid: str, slot: int = 0) -> list:
     return [uid, slot]
 
 
-def expansion(graph: dict, outputs, names=None) -> tuple:
+def expansion(graph: dict, outputs, names=None) -> dict:
     """Build the return value ComfyUI Core expects from an expanding node.
 
     Core 0.43 reads the parent's output values from the ``result`` key of the
     returned dict (``execution.get_output_from_returns``) and then indexes that
     value **positionally** (``node_outputs[i]``), so it must be a sequence in
     ``RETURN_TYPES`` order — a mapping keyed by output name raises a KeyError
-    at runtime. The previous payload had no ``result`` key at all, which made
-    Core iterate ``None``.
+    at runtime.
+
+    The function must return the dict itself, not a one element tuple. Core
+    collects the node function's return value into a list
+    (``_async_map_node_over_list``) and then checks ``isinstance(r, dict)`` on
+    each element. Wrapping the payload in a tuple made that check fail, the
+    subgraph was never recognised, and the node reported a single list output
+    instead of its six declared outputs.
 
     ``visible_to_parent`` is not read by Core 0.43 and is kept only so that a
     caller inspecting the payload can tell the subgraph is internal. The
@@ -104,7 +110,7 @@ def expansion(graph: dict, outputs, names=None) -> tuple:
     }
     if names:
         payload["outputs"] = dict(zip(names, ordered))
-    return (payload,)
+    return payload
 
 
 def sage_attention_available() -> bool:

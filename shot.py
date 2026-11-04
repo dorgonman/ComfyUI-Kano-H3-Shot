@@ -68,7 +68,14 @@ class KanoH3Shot:
     RETURN_TYPES = ("IMAGE", "AUDIO", "STRING", "STRING")
     RETURN_NAMES = ("images", "audio", "status", "report")
     FUNCTION = "expand"
-    OUTPUT_NODE = False
+    # This node has to be an output node. ComfyUI builds the execution list by
+    # walking backwards from the output nodes (execution.py: the executor seeds
+    # execution_list with the output node ids and follows their inputs), and a
+    # subgraph only materialises when its parent actually executes. With
+    # OUTPUT_NODE False and no consumer downstream, the whole H3 branch was
+    # pruned and the prompt finished in 0.06 seconds without rendering
+    # anything.
+    OUTPUT_NODE = True
     CATEGORY = "Kano/H3"
     DESCRIPTION = (
         "MiniMax H3 Continuum sampler plus decode, seam assembly and MP4 output. "
